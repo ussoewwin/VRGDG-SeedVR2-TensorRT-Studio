@@ -1,14 +1,23 @@
-"""Export a fixed-shape SeedVR2 VAE decoder graph for TensorRT experiments.
-
-This intentionally starts with a small 5-frame profile. The graph must pass
-PyTorch parity before increasing it to 1080p.
-"""
+"""Export a fixed-shape SeedVR2 VAE decoder graph for TensorRT experiments."""
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+# Ensure torch/lib is at the very front of PATH and DLL search to prevent version mismatch
+torch_lib = Path(sys.prefix) / "Lib" / "site-packages" / "torch" / "lib"
+if torch_lib.exists():
+    os.environ["PATH"] = str(torch_lib) + os.pathsep + os.environ.get("PATH", "")
+    if hasattr(os, "add_dll_directory"):
+        try:
+            os.add_dll_directory(str(torch_lib))
+        except Exception:
+            pass
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import torch
 
@@ -35,9 +44,6 @@ class Decoder(torch.nn.Module):
         self.decoder = decoder
 
     def forward(self, latent: torch.Tensor) -> torch.Tensor:
-        # Export the non-streaming fixed-profile path.  The production VAE
-        # can slice/retain temporal memory dynamically, but those Python
-        # branches are intentionally outside this first TensorRT profile.
         return self.decoder(latent, memory_state=MemoryState.DISABLED)
 
 
@@ -45,22 +51,20 @@ def configure_fixed_profile(vae: torch.nn.Module) -> None:
     """Disable adaptive VAE slicing for a fixed-shape export profile."""
     if hasattr(vae, "disable_slicing"):
         vae.disable_slicing()
-    # The normal high-resolution path chunks GroupNorm for memory safety.
-    # That produces ONNX sequence operators, which TensorRT cannot import.
-    # Fixed-profile export uses the direct GPU GroupNorm path instead.
     if hasattr(vae, "set_memory_limit"):
         vae.set_memory_limit(None, None)
     for module in vae.modules():
         if isinstance(module, InflatedCausalConv3d):
             module.set_memory_limit(float("inf"))
             module.set_memory_device(None)
-        # UpDecoderBlock3D exposes this switch; disabling it prevents list /
-        # split control flow from entering the exported graph.
         if hasattr(module, "slicing"):
             module.slicing = False
 
 
 def main() -> None:
+    if hasattr(torch.backends, "cudnn"):
+        torch.backends.cudnn.enabled = True
+        torch.backends.cudnn.benchmark = False
     parser = argparse.ArgumentParser()
     parser.add_argument("--height", type=int, default=256)
     parser.add_argument("--width", type=int, default=256)
@@ -84,8 +88,6 @@ def main() -> None:
         tensor_offload_device=None,
         debug=debug,
     )
-    # TensorRT parity target is FP16; keep this experiment independent of the
-    # normal pipeline's automatic bfloat16 choice.
     ctx["compute_dtype"] = torch.float16
     runner, _ = prepare_runner(
         dit_model=DEFAULT_DIT,
@@ -111,12 +113,9 @@ def main() -> None:
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with torch.inference_mode():
-        reference = decoder(latent)
         export_portable_onnx(decoder, (latent,), args.output, legacy=args.legacy_export)
     print(f"Exported: {args.output}")
     print(f"Latent shape: {tuple(latent.shape)}")
-    print(f"Output shape: {tuple(reference.shape)}")
-    print(f"Reference range: {reference.min().item():.6f} .. {reference.max().item():.6f}")
 
 
 if __name__ == "__main__":

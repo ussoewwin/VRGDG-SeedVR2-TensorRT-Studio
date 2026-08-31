@@ -123,6 +123,61 @@ def _progress_from_log(line: str) -> tuple[float, str] | None:
     return None
 
 
+def _normalize_color_correction(value: str | None) -> str:
+    if not value:
+        return "none"
+    val = str(value).strip().lower()
+    valid = {"lab", "wavelet", "wavelet_adaptive", "hsv", "adain", "none"}
+    if val in valid:
+        return val
+    if val in ("なし", "無", "オフ", "off", "disabled", "false"):
+        return "none"
+    if "wavelet_adaptive" in val or ("適応" in val and "ウェーブレット" in val):
+        return "wavelet_adaptive"
+    if "wavelet" in val or "ウェーブレット" in val:
+        return "wavelet"
+    if "lab" in val:
+        return "lab"
+    if "hsv" in val:
+        return "hsv"
+    if "adain" in val:
+        return "adain"
+    return "none"
+
+
+def _normalize_attention_mode(value: str | None) -> str:
+    if not value:
+        return "sageattn_2"
+    val = str(value).strip().lower()
+    valid = {"sageattn_2", "sageattn_3", "flash_attn_2", "flash_attn_3", "sdpa"}
+    if val in valid:
+        return val
+    if "sageattn_2" in val or "sage2" in val or "sage" in val:
+        return "sageattn_2"
+    if "sageattn_3" in val or "sage3" in val:
+        return "sageattn_3"
+    if "flash_attn_2" in val or "flash2" in val or "fa2" in val:
+        return "flash_attn_2"
+    if "flash_attn_3" in val or "flash3" in val or "fa3" in val:
+        return "flash_attn_3"
+    return "sdpa"
+
+
+def _normalize_model_file(model_label: str | None) -> str:
+    if not model_label:
+        return "seedvr2_ema_3b_fp8_e4m3fn.safetensors"
+    if model_label in MODEL_FILES:
+        return MODEL_FILES[model_label]
+    label = str(model_label).lower()
+    if "7b" in label:
+        if "sharp" in label and "fp16" in label:
+            return "seedvr2_ema_7b_sharp_fp16.safetensors"
+        return "seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors"
+    if "fp16" in label:
+        return "seedvr2_ema_3b_fp16.safetensors"
+    return "seedvr2_ema_3b_fp8_e4m3fn.safetensors"
+
+
 def render(
     backend_name: str,
     source: Path,
@@ -142,7 +197,9 @@ def render(
         if not trt_available:
             raise MediaError(trt_reason)
 
-    model = MODEL_FILES[settings.model_label]
+    model = _normalize_model_file(settings.model_label)
+    color_correction = _normalize_color_correction(settings.color_correction)
+    attention_mode = _normalize_attention_mode(settings.attention_mode)
     capture_dir = output.parent / "vae_latents"
     command = [
         str(VENV_PYTHON), str(SEEDVR_CLI), str(source),
@@ -154,8 +211,8 @@ def render(
         # The decoder needs temporal context; undersized end batches can
         # produce a soft/blobby final frame.
         "--uniform_batch_size",
-        "--color_correction", settings.color_correction,
-        "--attention_mode", settings.attention_mode, "--video_backend", "ffmpeg",
+        "--color_correction", color_correction,
+        "--attention_mode", attention_mode, "--video_backend", "ffmpeg",
     ]
     if settings.blocks_to_swap:
         command += ["--blocks_to_swap", str(settings.blocks_to_swap),

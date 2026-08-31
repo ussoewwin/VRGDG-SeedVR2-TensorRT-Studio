@@ -41,9 +41,24 @@ class VideoInfo:
 
 def _tool(name: str) -> str:
     found = shutil.which(name)
-    if not found:
-        raise MediaError(f"{name} was not found in PATH")
-    return found
+    if found:
+        return found
+
+    # Fallback to standard installation paths
+    ext = ".exe" if not name.lower().endswith(".exe") else ""
+    candidate_dirs = [
+        Path(r"C:\Program Files\ffmpeg\bin"),
+        Path(r"C:\Program Files\ffmpeg"),
+        Path(r"C:\Program Files (x86)\ffmpeg\bin"),
+        Path(r"C:\ffmpeg\bin"),
+        Path(r"D:\ffmpeg\bin"),
+    ]
+    for d in candidate_dirs:
+        candidate_file = d / f"{name}{ext}"
+        if candidate_file.exists():
+            return str(candidate_file)
+
+    raise MediaError(f"{name} was not found in PATH")
 
 
 def run(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:

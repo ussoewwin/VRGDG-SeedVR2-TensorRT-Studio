@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $StudioRoot = Split-Path -Parent $PSScriptRoot
 $StudioPython = Join-Path $StudioRoot '.venv\Scripts\python.exe'
 $StudioUrl = 'http://127.0.0.1:7870/'
-$BrowserUrl = $StudioUrl + '?ui=20260830-3'
+$BrowserUrl = $StudioUrl + '?ui=20260831-1'
 $HealthUrl = $StudioUrl + 'api/health'
 $ShutdownUrl = $StudioUrl + 'api/shutdown'
 $LogOut = Join-Path $StudioRoot 'outputs\js_server.log'
@@ -35,6 +35,22 @@ if ($InstallationNeeded) {
     $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $env:Path = $machinePath + ';' + $userPath
+}
+
+$candidatePaths = @(
+    'C:\Program Files\ffmpeg\bin',
+    'C:\Program Files\ffmpeg',
+    'C:\Program Files (x86)\ffmpeg\bin',
+    'C:\ffmpeg\bin',
+    'D:\ffmpeg\bin',
+    (Join-Path $StudioRoot 'bin\ffmpeg\bin'),
+    (Join-Path $StudioRoot 'bin')
+)
+foreach ($p in $candidatePaths) {
+    if ((Test-Path (Join-Path $p 'ffmpeg.exe')) -and (Test-Path (Join-Path $p 'ffprobe.exe'))) {
+        $env:Path = $p + ';' + $env:Path
+        break
+    }
 }
 
 
@@ -158,7 +174,36 @@ try {
     }
     if ($appSeen) {
         Write-Host 'Close the SeedVR Studio window to stop rendering and release GPU/RAM.' -ForegroundColor Cyan
-        while (Test-StudioAppRunning $browser.Id) { Start-Sleep -Milliseconds 500 }
+        Write-Host '--- Live Studio Logs ---' -ForegroundColor DarkGray
+        $lastLogPos = 0
+        if (Test-Path -LiteralPath $LogOut) {
+            $lastLogPos = (Get-Item -LiteralPath $LogOut).Length
+        }
+        while (Test-StudioAppRunning $browser.Id) {
+            if (Test-Path -LiteralPath $LogOut) {
+                $item = Get-Item -LiteralPath $LogOut
+                if ($item.Length -gt $lastLogPos) {
+                    try {
+                        $stream = [System.IO.File]::Open($LogOut, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                        $stream.Seek($lastLogPos, [System.IO.SeekOrigin]::Begin) | Out-Null
+                        $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
+                        $content = $reader.ReadToEnd()
+                        $lastLogPos = $stream.Position
+                        $reader.Close()
+                        $stream.Close()
+                        if ($content) {
+                            $lines = $content -split "`r?`n"
+                            foreach ($line in $lines) {
+                                if ($line -and -not ($line -match 'GET /api/(jobs|health|outputs)')) {
+                                    Write-Host $line
+                                }
+                            }
+                        }
+                    } catch {}
+                }
+            }
+            Start-Sleep -Milliseconds 300
+        }
     }
     else {
         Write-Warning "The dedicated app window could not be tracked. Studio remains at $StudioUrl"

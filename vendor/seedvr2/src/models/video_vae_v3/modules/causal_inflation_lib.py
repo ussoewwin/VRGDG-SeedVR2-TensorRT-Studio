@@ -91,7 +91,14 @@ class InflatedCausalConv3d(Conv3d):
         Workaround: Call torch.cudnn_convolution directly to bypass buggy layer.
         Status is logged at startup in compatibility.py.
         """
-        if (input.is_cuda and NVIDIA_CONV3D_MEMORY_BUG_WORKAROUND and
+        is_tracing = False
+        try:
+            if torch.jit.is_tracing() or (hasattr(torch.onnx, "is_in_onnx_export") and torch.onnx.is_in_onnx_export()):
+                is_tracing = True
+        except Exception:
+            pass
+
+        if (not is_tracing and input.is_cuda and NVIDIA_CONV3D_MEMORY_BUG_WORKAROUND and
             weight.dtype in (torch.float16, torch.bfloat16) and 
             hasattr(torch.backends.cudnn, 'is_available') and
             torch.backends.cudnn.is_available() and
@@ -110,7 +117,17 @@ class InflatedCausalConv3d(Conv3d):
                 pass
         
         # Use standard path for unaffected configurations or if workaround failed
-        return super()._conv_forward(input, weight, bias, *args, **kwargs)
+        try:
+            return super()._conv_forward(input, weight, bias, *args, **kwargs)
+        except RuntimeError as e:
+            if "CUDNN" in str(e) and hasattr(torch.backends, "cudnn") and torch.backends.cudnn.enabled:
+                prev_enabled = torch.backends.cudnn.enabled
+                try:
+                    torch.backends.cudnn.enabled = False
+                    return super()._conv_forward(input, weight, bias, *args, **kwargs)
+                finally:
+                    torch.backends.cudnn.enabled = prev_enabled
+            raise
 
     def memory_limit_conv(
         self,

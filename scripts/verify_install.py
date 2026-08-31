@@ -6,7 +6,27 @@ import importlib
 import shutil
 from pathlib import Path
 
+import os
+
 ROOT = Path(__file__).resolve().parents[1]
+
+def _ensure_ffmpeg_path():
+    candidate_dirs = [
+        Path(r"C:\Program Files\ffmpeg\bin"),
+        Path(r"C:\Program Files\ffmpeg"),
+        Path(r"C:\Program Files (x86)\ffmpeg\bin"),
+        Path(r"C:\ffmpeg\bin"),
+        Path(r"D:\ffmpeg\bin"),
+        ROOT / "bin" / "ffmpeg" / "bin",
+        ROOT / "bin",
+    ]
+    for d in candidate_dirs:
+        if (d / "ffmpeg.exe").exists() and (d / "ffprobe.exe").exists():
+            os.environ["PATH"] = str(d) + os.pathsep + os.environ.get("PATH", "")
+            break
+
+_ensure_ffmpeg_path()
+
 REQUIRED_ENGINES = (
     "vae_decoder_tile_256_21f.rtxplan",
     "vae_decoder_tile_512_5f.rtxplan",
@@ -16,6 +36,7 @@ REQUIRED_ENGINES = (
 
 
 def main() -> int:
+    _ensure_ffmpeg_path()
     failures: list[str] = []
     for executable in ("ffmpeg", "ffprobe"):
         if not shutil.which(executable):

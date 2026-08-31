@@ -19,4 +19,9 @@ vendor/seedvr2/docs/
 vendor/seedvr2/example_workflows/
 vendor/seedvr2/CONTRIBUTING.md
 vendor/seedvr2/README.md
+wheels/
+*.whl
+*.egg-info/
+scratch/
+反省文/
 vendor/seedvr2/pyproject.toml
