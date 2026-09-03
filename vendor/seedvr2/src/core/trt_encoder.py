@@ -17,13 +17,38 @@ _ENGINES: dict[int, tuple[object, object, object, str, str, torch.cuda.Stream]] 
 _ENCODE_LOCK = Lock()
 
 
+import subprocess
+import sys
+
+def _ensure_encoder_engine_file(frames: int) -> Path:
+    if frames not in (5, 9, 13, 17, 21):
+        raise ValueError(f"TensorRT VAE encoder supports temporal batches 5, 9, 13, 17, and 21, got {frames}")
+    path = ARTIFACTS / f"vae_encoder_{frames}f_tile512.rtxplan"
+    if not path.exists() or path.stat().st_size < 1_000_000:
+        ARTIFACTS.mkdir(parents=True, exist_ok=True)
+        onnx_path = ARTIFACTS / f"vae_encoder_{frames}f_tile512.onnx"
+        py = sys.executable
+        if not onnx_path.exists():
+            print(f"Exporting ONNX VAE encoder for {frames} frames...", flush=True)
+            cmd_export = [
+                str(py), "-u", str(ROOT / "tools" / "export_vae_encoder.py"),
+                "--height", "512", "--width", "512", "--frames", str(frames), "--legacy-export",
+                "--output", str(onnx_path)
+            ]
+            subprocess.run(cmd_export, cwd=ROOT, check=True)
+        print(f"Building TensorRT VAE encoder engine for {frames} frames...", flush=True)
+        cmd_build = [
+            str(py), "-u", str(ROOT / "tools" / "build_tensorrt_engine.py"),
+            str(onnx_path), "--output", str(path), "--workspace-gb", "8"
+        ]
+        subprocess.run(cmd_build, cwd=ROOT, check=True)
+        if not path.exists():
+            raise RuntimeError(f"Failed to build TensorRT encoder engine: {path}")
+    return path
+
+
 def _engine(frames: int):
-    if frames == 5:
-        path = ARTIFACTS / "vae_encoder_5f_tile512.rtxplan"
-    elif frames == 21:
-        path = ARTIFACTS / "vae_encoder_21f_tile512.rtxplan"
-    else:
-        raise ValueError("TensorRT VAE encoder supports temporal batches 5 and 21")
+    path = _ensure_encoder_engine_file(frames)
     cached = _ENGINES.get(frames)
     if cached is not None:
         return cached

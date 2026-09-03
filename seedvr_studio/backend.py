@@ -191,8 +191,8 @@ def render(
 
     use_tensorrt = "TensorRT" in backend_name and not settings.stop_before_vae
     if use_tensorrt:
-        if settings.batch_size not in (5, 21):
-            raise MediaError("SeedVR2 + TensorRT currently supports temporal batch sizes 5 and 21; use SeedVR2 (Legacy) for other sizes.")
+        if settings.batch_size not in (5, 9, 13, 17, 21):
+            raise MediaError("SeedVR2 + TensorRT currently supports temporal batch sizes 5, 9, 13, 17, and 21; use SeedVR2 (Legacy) for other sizes.")
         trt_available, trt_reason = tensorrt_status()
         if not trt_available:
             raise MediaError(trt_reason)

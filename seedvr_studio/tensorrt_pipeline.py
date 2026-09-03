@@ -21,9 +21,45 @@ TRT_RUNNER = ROOT / "tools" / "run_tensorrt_tiled.py"
 TRT_ASSEMBLER = ROOT / "tools" / "assemble_tensor_video.py"
 TRT_POSTPROCESS = ROOT / "tools" / "postprocess_tensor_video.py"
 TRT_ARTIFACTS = ROOT / "tensorrt_backend" / "artifacts"
-TRT_ENGINE_21F = TRT_ARTIFACTS / "vae_decoder_tile_256_21f.rtxplan"
-TRT_ENGINE_5F = TRT_ARTIFACTS / "vae_decoder_tile_512_5f.rtxplan"
 ProgressCallback = Callable[[float, str], None]
+
+
+def _ensure_decoder_engine(latent_frames: int) -> tuple[Path, int, int]:
+    mapping = {
+        2: (TRT_ARTIFACTS / "vae_decoder_tile_512_5f", 64, 24, 512),
+        3: (TRT_ARTIFACTS / "vae_decoder_tile_256_9f", 32, 12, 256),
+        4: (TRT_ARTIFACTS / "vae_decoder_tile_256_13f", 32, 12, 256),
+        5: (TRT_ARTIFACTS / "vae_decoder_tile_256_17f", 32, 12, 256),
+        6: (TRT_ARTIFACTS / "vae_decoder_tile_256_21f", 32, 12, 256),
+    }
+    if latent_frames not in mapping:
+        raise MediaError(
+            f"TensorRT VAE has no fixed engine for latent temporal size {latent_frames}; "
+            "supported temporal batch sizes are 5, 9, 13, 17, and 21."
+        )
+    stem_path, tile, overlap, spatial_dim = mapping[latent_frames]
+    engine_path = stem_path.with_suffix(".rtxplan")
+    if not engine_path.exists() or engine_path.stat().st_size < 1_000_000:
+        TRT_ARTIFACTS.mkdir(parents=True, exist_ok=True)
+        onnx_path = stem_path.with_suffix(".onnx")
+        if not onnx_path.exists():
+            _safe_print(f"Exporting ONNX VAE decoder for {latent_frames * 4 - 3} frames...")
+            cmd_export = [
+                str(VENV_PYTHON), "-u", str(ROOT / "tools" / "export_vae_decoder.py"),
+                "--height", str(spatial_dim), "--width", str(spatial_dim),
+                "--latent-frames", str(latent_frames), "--legacy-export",
+                "--output", str(onnx_path),
+            ]
+            subprocess.run(cmd_export, cwd=ROOT, check=True)
+        _safe_print(f"Building TensorRT VAE decoder engine for {latent_frames * 4 - 3} frames...")
+        cmd_build = [
+            str(VENV_PYTHON), "-u", str(ROOT / "tools" / "build_tensorrt_engine.py"),
+            str(onnx_path), "--output", str(engine_path), "--workspace-gb", "8",
+        ]
+        subprocess.run(cmd_build, cwd=ROOT, check=True)
+        if not engine_path.exists():
+            raise MediaError(f"Failed to build TensorRT decoder engine: {engine_path}")
+    return engine_path, tile, overlap
 
 
 def _unpadded_output_size(source: Path, resolution: int, max_resolution: int) -> tuple[int, int]:
@@ -63,15 +99,7 @@ def _profile_latents(latent_files: list[Path]) -> list[dict[str, Any]]:
                 f"(peak={peak:g}). The batch was stopped before TensorRT decoding."
             )
         del payload, latent
-        if latent_frames == 6:
-            engine, tile, overlap = TRT_ENGINE_21F, 32, 12
-        elif latent_frames == 2:
-            engine, tile, overlap = TRT_ENGINE_5F, 64, 24
-        else:
-            raise MediaError(
-                f"TensorRT VAE has no fixed engine for latent temporal size {latent_frames}; "
-                "use batch size 5 or 21."
-            )
+        engine, tile, overlap = _ensure_decoder_engine(latent_frames)
         profiles.append({
             "latent": latent_file,
             "output": latent_file.parent.parent / "tensorrt_decoded" / f"decoded_{index:03d}.pt",

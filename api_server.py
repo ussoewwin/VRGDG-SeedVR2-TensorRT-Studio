@@ -71,7 +71,7 @@ def config() -> dict[str, object]:
         },
         "crop_policies": ["Preserve original aspect ratio", "Center crop to 16:9"],
         "batch_sizes": {
-            "SeedVR2 + TensorRT": [5, 21],
+            "SeedVR2 + TensorRT": [5, 9, 13, 17, 21],
             "SeedVR2 (Legacy)": [1, 5, 9, 13, 17, 21, 33, 45],
         },
         "seam_modes": {"off": "Off / original output", "noise": "Noise match — gentle", "match": "Color + noise match", "blend": "Boundary dissolve — strongest"},
