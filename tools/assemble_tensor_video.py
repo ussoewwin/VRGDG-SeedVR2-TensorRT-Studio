@@ -142,16 +142,36 @@ def main() -> None:
         frames, args.audio, args.target_width, args.target_height
     )
     temp = args.output.with_name(args.output.stem + "_noaudio.mp4")
-    writer = cv2.VideoWriter(str(temp), cv2.VideoWriter_fourcc(*"avc1"), args.fps,
-                             output_size)
-    if not writer.isOpened():
-        writer = cv2.VideoWriter(str(temp), cv2.VideoWriter_fourcc(*"mp4v"), args.fps,
-                                 output_size)
-    for frame in frames:
-        if (frame.shape[1], frame.shape[0]) != output_size:
-            frame = cv2.resize(frame, output_size, interpolation=cv2.INTER_LINEAR)
-        writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-    writer.release()
+    width, height = output_size
+    # OpenCV chooses a backend-specific bitrate. A fixed CRF keeps restored
+    # detail high while preventing unexpectedly oversized output files.
+    encode_command = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-f", "rawvideo", "-pix_fmt", "rgb24",
+        "-s:v", f"{width}x{height}", "-r", f"{args.fps:.9g}", "-i", "pipe:0",
+        "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(temp),
+    ]
+    encoder = subprocess.Popen(encode_command, stdin=subprocess.PIPE)
+    write_error = None
+    try:
+        assert encoder.stdin is not None
+        for frame in frames:
+            if (frame.shape[1], frame.shape[0]) != output_size:
+                frame = cv2.resize(frame, output_size, interpolation=cv2.INTER_LINEAR)
+            encoder.stdin.write(frame.tobytes())
+    except BrokenPipeError as exc:
+        write_error = exc
+    finally:
+        if encoder.stdin is not None:
+            encoder.stdin.close()
+    return_code = encoder.wait()
+    if return_code:
+        temp.unlink(missing_ok=True)
+        raise subprocess.CalledProcessError(return_code, encode_command) from write_error
+    if write_error is not None:
+        temp.unlink(missing_ok=True)
+        raise write_error
     if args.audio:
         video_duration = frames.shape[0] / max(args.fps, 1e-6)
         subprocess.run(["ffmpeg", "-y", "-i", str(temp), "-i", str(args.audio),

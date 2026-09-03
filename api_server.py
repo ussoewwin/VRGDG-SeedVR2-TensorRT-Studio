@@ -461,4 +461,16 @@ def media(relative_path: str) -> FileResponse:
     return FileResponse(candidate)
 
 
+@app.get("/app.js", include_in_schema=False)
+def serve_app_js() -> FileResponse:
+    # Windows can register .js as text/plain. Module scripts require a
+    # JavaScript MIME type, so do not leave this asset to MIME guessing.
+    return FileResponse(WEB / "app.js", media_type="application/javascript")
+
+
+@app.get("/styles.css", include_in_schema=False)
+def serve_styles_css() -> FileResponse:
+    return FileResponse(WEB / "styles.css", media_type="text/css")
+
+
 app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
