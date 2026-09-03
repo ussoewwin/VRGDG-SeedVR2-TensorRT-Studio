@@ -3,12 +3,33 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 from pathlib import Path
 
 import cv2
 import torch
 import torch.nn.functional as F
+
+
+def _get_ffmpeg() -> str:
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    candidate_dirs = [
+        Path(r"C:\Program Files\ffmpeg\bin"),
+        Path(r"C:\Program Files\ffmpeg"),
+        Path(r"C:\Program Files (x86)\ffmpeg\bin"),
+        Path(r"C:\ffmpeg\bin"),
+        Path(r"D:\ffmpeg\bin"),
+        Path(__file__).resolve().parents[1] / "bin" / "ffmpeg" / "bin",
+        Path(__file__).resolve().parents[1] / "bin",
+    ]
+    for d in candidate_dirs:
+        candidate_file = d / "ffmpeg.exe"
+        if candidate_file.exists():
+            return str(candidate_file)
+    return "ffmpeg"
 
 
 def load_video_tensor(path: Path) -> tuple[torch.Tensor, int | None]:
@@ -145,8 +166,9 @@ def main() -> None:
     width, height = output_size
     # OpenCV chooses a backend-specific bitrate. A fixed CRF keeps restored
     # detail high while preventing unexpectedly oversized output files.
+    ffmpeg_bin = _get_ffmpeg()
     encode_command = [
-        "ffmpeg", "-y", "-loglevel", "error",
+        ffmpeg_bin, "-y", "-loglevel", "error",
         "-f", "rawvideo", "-pix_fmt", "rgb24",
         "-s:v", f"{width}x{height}", "-r", f"{args.fps:.9g}", "-i", "pipe:0",
         "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "18",
@@ -174,7 +196,7 @@ def main() -> None:
         raise write_error
     if args.audio:
         video_duration = frames.shape[0] / max(args.fps, 1e-6)
-        subprocess.run(["ffmpeg", "-y", "-i", str(temp), "-i", str(args.audio),
+        subprocess.run([ffmpeg_bin, "-y", "-i", str(temp), "-i", str(args.audio),
                         "-map", "0:v:0", "-map", "1:a:0?", "-c:v", "copy",
                         "-c:a", "aac", "-t", f"{video_duration:.9f}", str(args.output)], check=True)
         temp.unlink(missing_ok=True)
