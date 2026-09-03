@@ -17,7 +17,7 @@ PROFILES = (
     ("encoder 13-frame", "vae_encoder_13f_tile512", "export_vae_encoder.py", ("--height", "512", "--width", "512", "--frames", "13", "--legacy-export")),
     ("encoder 17-frame", "vae_encoder_17f_tile512", "export_vae_encoder.py", ("--height", "512", "--width", "512", "--frames", "17", "--legacy-export")),
     ("encoder 21-frame", "vae_encoder_21f_tile512", "export_vae_encoder.py", ("--height", "512", "--width", "512", "--frames", "21", "--legacy-export")),
-    ("decoder 5-frame", "vae_decoder_tile_512_5f", "export_vae_decoder.py", ("--height", "512", "--width", "512", "--latent-frames", "2", "--legacy-export")),
+    ("decoder 5-frame", "vae_decoder_tile_256_5f", "export_vae_decoder.py", ("--height", "256", "--width", "256", "--latent-frames", "2", "--legacy-export")),
     ("decoder 9-frame", "vae_decoder_tile_256_9f", "export_vae_decoder.py", ("--height", "256", "--width", "256", "--latent-frames", "3", "--legacy-export")),
     ("decoder 13-frame", "vae_decoder_tile_256_13f", "export_vae_decoder.py", ("--height", "256", "--width", "256", "--latent-frames", "4", "--legacy-export")),
     ("decoder 17-frame", "vae_decoder_tile_256_17f", "export_vae_decoder.py", ("--height", "256", "--width", "256", "--latent-frames", "5", "--legacy-export")),

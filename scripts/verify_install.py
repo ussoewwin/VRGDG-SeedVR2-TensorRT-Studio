@@ -57,6 +57,11 @@ def main() -> int:
     artifacts = ROOT / "tensorrt_backend" / "artifacts"
     for name in REQUIRED_ENGINES:
         path = artifacts / name
+        # If checking 5f decoder, allow either 256_5f or 512_5f
+        if name == "vae_decoder_tile_512_5f.rtxplan":
+            alt_path = artifacts / "vae_decoder_tile_256_5f.rtxplan"
+            if (path.exists() and path.stat().st_size > 1_000_000) or (alt_path.exists() and alt_path.stat().st_size > 1_000_000):
+                continue
         if not path.exists() or path.stat().st_size < 1_000_000:
             failures.append(f"TensorRT engine is missing: {name}")
     if failures:

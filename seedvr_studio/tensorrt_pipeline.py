@@ -26,7 +26,7 @@ ProgressCallback = Callable[[float, str], None]
 
 def _ensure_decoder_engine(latent_frames: int) -> tuple[Path, int, int]:
     mapping = {
-        2: (TRT_ARTIFACTS / "vae_decoder_tile_512_5f", 64, 24, 512),
+        2: (TRT_ARTIFACTS / "vae_decoder_tile_256_5f", 32, 12, 256),
         3: (TRT_ARTIFACTS / "vae_decoder_tile_256_9f", 32, 12, 256),
         4: (TRT_ARTIFACTS / "vae_decoder_tile_256_13f", 32, 12, 256),
         5: (TRT_ARTIFACTS / "vae_decoder_tile_256_17f", 32, 12, 256),
@@ -39,6 +39,11 @@ def _ensure_decoder_engine(latent_frames: int) -> tuple[Path, int, int]:
         )
     stem_path, tile, overlap, spatial_dim = mapping[latent_frames]
     engine_path = stem_path.with_suffix(".rtxplan")
+    # Check if a legacy 512 engine exists for 5f as backward compatibility
+    if latent_frames == 2 and not engine_path.exists():
+        legacy_512 = (TRT_ARTIFACTS / "vae_decoder_tile_512_5f").with_suffix(".rtxplan")
+        if legacy_512.exists() and legacy_512.stat().st_size > 1_000_000:
+            return legacy_512, 64, 24
     if not engine_path.exists() or engine_path.stat().st_size < 1_000_000:
         TRT_ARTIFACTS.mkdir(parents=True, exist_ok=True)
         onnx_path = stem_path.with_suffix(".onnx")
