@@ -171,8 +171,6 @@ def main() -> None:
         ffmpeg_bin, "-y", "-loglevel", "error",
         "-f", "rawvideo", "-pix_fmt", "rgb24",
         "-s:v", f"{width}x{height}", "-r", f"{args.fps:.9g}", "-i", "pipe:0",
-        "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
-        "-fps_mode", "cfr",
         "-an", "-c:v", "libx264", "-preset", "medium", "-crf", "18",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(temp),
     ]
@@ -198,14 +196,9 @@ def main() -> None:
         raise write_error
     if args.audio:
         video_duration = frames.shape[0] / max(args.fps, 1e-6)
-        subprocess.run([
-            ffmpeg_bin, "-y", "-i", str(temp), "-i", str(args.audio),
-            "-map", "0:v:0", "-map", "1:a:0?",
-            "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
-            "-fps_mode", "cfr",
-            "-c:v", "copy",
-            "-c:a", "aac", "-t", f"{video_duration:.9f}", str(args.output)
-        ], check=True)
+        subprocess.run([ffmpeg_bin, "-y", "-i", str(temp), "-i", str(args.audio),
+                        "-map", "0:v:0", "-map", "1:a:0?", "-c:v", "copy",
+                        "-c:a", "aac", "-t", f"{video_duration:.9f}", str(args.output)], check=True)
         temp.unlink(missing_ok=True)
     else:
         temp.replace(args.output)
