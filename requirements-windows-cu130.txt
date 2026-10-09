@@ -1,7 +1,7 @@
 # Known-good Windows/CUDA 13 stack used by SeedVR Studio.
 # PyTorch packages are installed separately from the nightly cu130 index.
 # sageattention is installed from custom wheel
-triton-windows==3.5.1.post24
+triton-windows
 tensorrt-rtx==1.6.1.120
 onnx==1.22.0
 onnxscript==0.7.1
